@@ -116,7 +116,7 @@ char opt_chars[11][5] =
     };
 
 /** 分隔符 主要用来取词和识别标点 **/
-char split_chars[7] = {
+char split_chars[5] = {
     '(',
     ')',
     ',',
@@ -132,11 +132,14 @@ char other_split_chars[] = {
 };
 
 void test();
+enum WordType lex(char* str);
+void wordAnalyze(sWordNode* val);
+
 /* 初始化 头节点 等操作*/
 void init();
 
 /* 利用此函数获取下一个字符，这样不论文件输入还是字符串输入都只需要修改此函数即可 */
-char getch();
+char getch(); // 在写getword的时候没有用到，本来要用的，。。。。闲置辽，改用重写fgetWord（） 了
 
 /* 输出报错信息 传入错误类型得枚举值 */
 void error(enum ErrorCode code);
@@ -166,7 +169,62 @@ sWordNode* psRoot,*psEnd;
 /* 全局变量 BUF ，如一次性输入所有字符，将存到这里 */
 char *pBUF = NULL;
 
-sWordNode* getWord(){
+/* func wordAnlyze
+* 把 结构体链表 的词语进行依次分析词性并写入结构体
+* 遇到错误时终止分析并打印错误信息
+* */
+void wordAnalyze(sWordNode* val)
+{
+
+}
+
+/*func lex
+* 字符串词性分析，对字符串进行单纯的词法分析操作
+* 递归调用
+* */
+enum WordType lex(char* str)
+{
+    if (ISSPACE(*str)) // 结束字符 错误
+    {
+        return TYPE_ERROR;
+    }
+    int iL = 0;
+    int iR = strlen(const_chars);
+    while (iL <= iR) // 折半查找 比对 CONST
+    {
+        if (strcmp(const_chars[(int)(iL + iR)],str) < 0)
+        {
+            iL = (int)(iL + iR)/2 + 1;
+        }else if (strcmp(const_chars[(int)(iL + iR)],str) > 0)
+        {
+            iR = (int)(iL + iR)/2 - 1;
+        }else
+        {
+            return TYPE_CONST;
+        }
+    }
+    if (ISALP(*str)) // 字母开头
+    {
+        while (ISALP(*str))
+        {
+            str++;
+        }
+        if (ISSPACE(*str)) //遇到非字母判断是否
+        {
+            return TYPE_ID
+        }
+    }else if (ISNUM(*str))
+    {
+
+    }else
+    {
+        return TYPE_UNKNOW;
+    }
+}
+
+
+sWordNode*
+getWord(){
     sWordNode *ret = creatDefNode();
     ret->eErrorCode = ERROR_EMPTY;
     if (pBUF == NULL)
@@ -215,6 +273,20 @@ sWordNode* getWord(){
     return ret;
 }
 
+/* func isSplit
+* 是否分隔符
+* 主要检查两组数据 opt_chars split_chars
+* 因为当中的分割符，可以存在 ");   和=(
+* 这种连用情况，所以根据单词起始状态分词不再有效
+* 为了解决这种情况，应该将 单字符 操作符和多字符操作符 分开
+* 在处理单字符 操作符时，不同的字符将返回不同的 true 值
+* 这样在根据其实状态分词时，就能够把连用的 单字符操作符 分开
+* 而多字符操作符任然保持连贯，而不用将所有操作符单个分开后期
+* 二次处理，但是，这样带来一个麻烦时类似c语言中的++ 这样的
+* 单目运算符后期处理变得困难，因为可能出现i+++++++这样的连用情况
+* 所以如果出现这样的操作符，还是应该把所有操作符分别取词，
+* 后期语法分析时，再进行多字符操作符的分析
+* */
 int isSplit(char c)
 {
     int i = 1;
