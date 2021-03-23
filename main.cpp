@@ -30,7 +30,7 @@ History:
 #endif // ISNUM
 
 #ifndef ISALP(val)
-#define ISALP(val) (val >= 'A' && val <= 'Z' && val >= 'a' && val <= 'z')
+#define ISALP(val) ( (val >= 'A' && val <= 'Z') || (val >= 'a' && val <= 'z') )
 #endif // ISALP
 
 #ifndef ISSPACE(val)
@@ -39,23 +39,25 @@ History:
 using namespace std;
 
 enum WordType{
-    TYPE_DEF,
-    TYPE_ERROR = -1,
-    TYPE_CONST,
-    TYPE_OPT,
-    TYPE_SPLIT,
-    TYPE_INTEGER,
-    TYPE_ID,
-    TYPE_UNKNOW
-
+    TYPE_DEF = 100,
+    TYPE_ERROR,   // 空字 错误
+    TYPE_CONST, // const
+    TYPE_OPT, // option char
+    TYPE_SPLIT, // split char
+    TYPE_INTEGER, // uint
+    TYPE_ID,        // variable
+    TYPE_UNKNOW_CHAR,     // unknow char error: stray '@' in program|
+    TYPE_UNLEGAL_UINT, //unable to find numeric literal operator 'operator""pj'
+    TYPE_PARASE_FAILED
 };
 
 enum ErrorCode{
-    ERROR_UNKNOW,           // 未知错误
+    ERROR_UNKNOW = 200,           // 未知错误
     ERROR_UNEXPECT_TERMINATION,  // 意外终止
-    ERROR_UNKNOW_CHAR = -1,       // 不能识别的非法字符
+    ERROR_UNKNOW_CHAR,       // 不能识别的非法字符
     ERROR_OK_NOERROR,                 //正确不包含错误
-    ERROR_EMPTY                 // 空 即未识别到有效字符
+    ERROR_EMPTY, // ,               // 空 即未识别到有效字符
+    ERROR_PARASE_FAILED         // 识别到非法
 };
 
 typedef struct sWordNode sWordNode;
@@ -64,13 +66,19 @@ typedef struct sWordNode sWordNode;
 struct sWordNode{
     int     iLine; //   the row line
     int     iAddres; // the colum
-    enum WordType eType; // word type
-    enum ErrorCode eErrorCode;
+    int eType; // word type
+    int  eErrorCode;
     char    *pcValue;
     sWordNode* pNext;
 };
 
+typedef struct sMsg Msg;
 
+struct sMsg{
+    int type;
+    char *msg;
+    char *errorChar;
+};
 
 
 char type_string[10][20] = {
@@ -131,8 +139,16 @@ char other_split_chars[] = {
     0x9
 };
 
+
+void showType(sWordNode *node);
+
+Msg*
+newMsg();
+
+void freeMsg(Msg *msg);
+
 void test();
-enum WordType lex(char* str);
+Msg* lex(char* str);
 void wordAnalyze(sWordNode* val);
 
 /* 初始化 头节点 等操作*/
@@ -142,7 +158,7 @@ void init();
 char getch(); // 在写getword的时候没有用到，本来要用的，。。。。闲置辽，改用重写fgetWord（） 了
 
 /* 输出报错信息 传入错误类型得枚举值 */
-void error(enum ErrorCode code);
+void error(int code);
 
 /* 分词函数，将输入分隔为单词单位 由lex 函数调用，负责将字符串按照分隔符分割为词单位
 * 将全局变量 BUF[] 作为输入源
@@ -169,57 +185,143 @@ sWordNode* psRoot,*psEnd;
 /* 全局变量 BUF ，如一次性输入所有字符，将存到这里 */
 char *pBUF = NULL;
 
+void freeMsg(Msg *msg)
+{
+        if (msg == NULL)
+        {
+            return;
+        }
+        free(msg->errorChar);
+        free(msg->msg);
+        free(msg);
+}
+
+Msg* newMsg()
+{
+    Msg* ret = (Msg*)malloc(sizeof(Msg));
+    ret->errorChar = NULL;
+    ret->msg = NULL;
+    ret->type = TYPE_DEF;
+    return ret;
+}
+
 /* func wordAnlyze
 * 把 结构体链表 的词语进行依次分析词性并写入结构体
 * 遇到错误时终止分析并打印错误信息
 * */
 void wordAnalyze(sWordNode* val)
 {
-
+    if (val == NULL)
+    {
+        return;
+    }
+    Msg *msg = lex(val->pcValue);
+    val->eType = msg->type;
+    switch (val->eType)
+    {
+    case TYPE_CONST:
+        cout << "(   关键字  ," << val->pcValue<<")" <<endl;
+        break;
+    case TYPE_OPT:
+        cout << "(   操作符  ,"<< val->pcValue<<")" <<endl;
+        break;
+    case TYPE_SPLIT:
+        cout << "(   分隔符  ,"<< val->pcValue<<")" <<endl;
+        break;
+    case TYPE_ID:
+        cout << "(   变量名  ,"<< val->pcValue<<")" <<endl;
+        break;
+    case TYPE_INTEGER:
+        cout << "( 无符号整数,"<< val->pcValue<<")" <<endl;
+        break;
+    case TYPE_UNKNOW_CHAR:
+        cout << "error:stray \'" << msg->errorChar <<"\' in program";
+        break;
+    case TYPE_UNLEGAL_UINT:
+        cout << "error:unable to find numeric literal operator 'operator";
+        break;
+    default:
+        cout << "lex can not reach here!"<<endl;
+    }
 }
 
 /*func lex
 * 字符串词性分析，对字符串进行单纯的词法分析操作
 * 递归调用
 * */
-enum WordType lex(char* str)
+Msg* lex(char* str)
 {
+    Msg* ret = newMsg();
     if (ISSPACE(*str)) // 结束字符 错误
     {
-        return TYPE_ERROR;
+        //int @mkd = 1;
+        ret->type = TYPE_ERROR;
+        return ret;
     }
-    int iL = 0;
-    int iR = strlen(const_chars);
-    while (iL <= iR) // 折半查找 比对 CONST
-    {
-        if (strcmp(const_chars[(int)(iL + iR)],str) < 0)
-        {
-            iL = (int)(iL + iR)/2 + 1;
-        }else if (strcmp(const_chars[(int)(iL + iR)],str) > 0)
-        {
-            iR = (int)(iL + iR)/2 - 1;
-        }else
-        {
-            return TYPE_CONST;
-        }
-    }
+
     if (ISALP(*str)) // 字母开头
     {
-        while (ISALP(*str))
+        for (auto val : const_chars)
         {
-            str++;
+            if (strcmp(val,str) == 0)
+            {
+                ret->type = TYPE_CONST;
+                return ret;
+            }
         }
-        if (ISSPACE(*str)) //遇到非字母判断是否
+
+        while (*(++str) != '\0')
         {
-            return TYPE_ID
+            if ( !ISNUM(*str) && !ISALP(*str))
+            {
+                ret->type = TYPE_UNKNOW_CHAR;
+                ret->errorChar = (char*) malloc(strlen(str) + 1);
+                strcpy(ret->errorChar,str);
+                return ret;
+            }
+//            str++;
         }
+        ret->type = TYPE_ID;
+        return ret;
     }else if (ISNUM(*str))
     {
-
+        while (*(++str) != '\0')
+        {
+            if (!ISNUM(*str))
+            {
+                ret->type = TYPE_UNLEGAL_UINT;
+                ret->errorChar = (char*) malloc(strlen(str) + 1);
+                cout <<str;
+                strcpy(ret->errorChar,str);
+                return ret;
+            }
+//            str++;
+        }
+        ret->type = TYPE_INTEGER;
+        return ret;
     }else
     {
-        return TYPE_UNKNOW;
+        for (auto val : opt_chars)
+        {
+            if (strcmp(val,str) == 0)
+            {
+                ret->type = TYPE_OPT;
+                return ret;
+            }
+        }
+        for (auto val : split_chars)
+        {
+            if (strcmp(&val,str) == 0)
+            {
+                ret->type = TYPE_SPLIT;
+                return ret;
+            }
+        }
     }
+    ret->type = TYPE_UNKNOW_CHAR;
+    ret->msg = (char*) malloc(30);
+    strcpy(ret->msg,"lex can not reach here!");
+    return ret;
 }
 
 
@@ -308,19 +410,53 @@ int isSplit(char c)
     return 0;
 }
 
-void error(enum ErrorCode code)
+void showType(sWordNode *node)
 {
-    ErrorCode ec;
+    if (node->eErrorCode != ERROR_OK_NOERROR)
+    {
+        error(node->eErrorCode);
+        return;
+    }
+
+}
+
+void error(int code)
+{
+
     switch (code)
     {
-    case ERROR_OK_NOERROR :
+    case ERROR_UNKNOW :
         cout << "cdc";
         break;
     case ERROR_UNEXPECT_TERMINATION :
 
         break;
+    case ERROR_UNKNOW_CHAR:
+
+        break;
+    case ERROR_OK_NOERROR:
+
+        break;
+    case ERROR_EMPTY:
+
+        break;
+    case TYPE_DEF:
+
+        break;
+    case TYPE_ERROR:
+
+        break;
+    case TYPE_UNKNOW_CHAR:
+
+        break;
+    case TYPE_UNLEGAL_UINT:
+
+        break;
+    case TYPE_PARASE_FAILED:
+
+        break;
     default:
-        cout << "lex can not reach here!";
+        cout << "all thing looks good!";
     }
 }
 
@@ -332,7 +468,7 @@ creatDefNode()
     sWordNode* ret = (sWordNode*)malloc(sizeof(sWordNode));
     ret->iLine = -1;
     ret->iAddres = -1;
-    ret->eType = TYPE_UNKNOW;
+    ret->eType = TYPE_DEF;
     ret->eErrorCode = ERROR_OK_NOERROR;
     ret->pcValue = NULL;
     ret->pNext = NULL;
@@ -369,7 +505,9 @@ void freeAllNode()
 
 int main()
 {
+
     test();
+
     cout << "Hello world!" << endl;
     return 0;
 }
@@ -377,6 +515,25 @@ int main()
 
 void test()
 {
+
+
+
+    /* 测试lex */
+    char lex_test[10][20] = {
+        "const",
+        "var",
+        "a",
+        "123",
+        "123pl",
+        "abc@",
+        "8520"
+    };
+    for (auto val : lex_test)
+    {
+        Msg* msg = lex(val);
+        cout << val <<" " << msg->type <<endl;
+    }
+   // return;
     /** 测试分词程序 */
     char str[300] =
     "const a=10;\n\
@@ -406,12 +563,21 @@ end.\0";
         node = getWord();
     }
     /** 测试链表是否正常 */
-
-    sWordNode* tmp = psRoot;
-    while(tmp)
+//
+//    sWordNode* tmp = psRoot;
+//    while(tmp)
+//    {
+//        cout << tmp->pcValue <<endl;
+//        tmp = tmp->pNext;
+//    }
+   /* 测试词法分析 */
+    sWordNode* tmp = psRoot->pNext;
+    while(tmp&& tmp->eErrorCode == ERROR_OK_NOERROR)
     {
-        cout << tmp->pcValue <<endl;
+        wordAnalyze(tmp);
         tmp = tmp->pNext;
     }
+
+
     freeAllNode();
 }
